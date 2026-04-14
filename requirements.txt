@@ -1,5 +1,7 @@
 streamlit
-google-genai
+google-genai==0.2.2
 pymongo
 langgraph
-dotenv
+python-dotenv
+PyYAML
+pypdf
