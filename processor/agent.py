@@ -23,7 +23,7 @@ MODEL_TEMPERATURE = 0.1
 MAX_FEEDBACK_LOOPS = 3
 MIN_CONFIDENCE_THRESHOLD = 0.7
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+PROJECT_ROOT = Path(__file__).parent.parent
 PROMPTS_FILE = "prompts.yaml"
 
 def load_prompts(prompts_file: str = PROMPTS_FILE) -> dict:

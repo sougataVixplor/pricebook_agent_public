@@ -1,0 +1,2016 @@
+# Prompts for AI Agents
+# All prompts are centralized here
+
+# ============================================
+# Series Extraction Agent Prompts
+# ============================================
+
+series_extraction:
+  description: "Main prompt for extracting series from door and frame PDF pricebooks"
+  prompt: |
+    You are an expert AI agent specialized in analyzing door and frame product catalogues and pricebooks.
+
+    TASK: Analyze the provided PDF document and extract ALL series information.
+
+    IMPORTANT RULES FOR SERIES EXTRACTION WHICH STRICTLY APPLY TO DOOR AND FRAME PRODUCTS:
+    1. Scan the ENTIRE document - series information may be scattered across non-contiguous pages
+    2. Do NOT classify individual options, parts, or accessories as separate series
+    3. Focus on DOOR and FRAME product series/lines only
+    4. Focus on extracting SERIES and PAGES ONLY - summaries will be extracted separately
+    5. Group related information - if a series spans multiple pages, capture ALL page numbers
+    6. Ensure ALL JSON strings are properly closed with quotes - no unterminated strings
+
+    EXCLUDE THE FOLLOWING — these are NOT series:
+    - Parts pages (replacement parts, spare parts lists, part numbers)
+    - Accessories pages (door accessories, hardware accessories, closers, hinges, locks, sweeps, seals, thresholds, weatherstripping)
+    - Optional add-ons, upgrades, or optional features sections
+    - Price adders, surcharges, or adjustment tables
+    - Finish/color option pages that are not tied to a specific series
+    - General terms, conditions, warranty, or index pages
+    - Freight, shipping, or packaging information
+    - Hardware items: hinges, pivots, closers, locks, exit devices, pulls, push/pull bars, kickplates, door stops, holders
+    - Glazing / glass / vision lite kits sold separately
+    - Louvers, grilles, or ventilation components sold separately
+    - Anchoring / installation accessories (anchors, clips, shims)
+    - Sealants, caulking, or gasket products
+    - Any page titled or headed with words like "Parts", "Accessories", "Options", "Add-Ons", "Adders", "Extras", "Miscellaneous", "Hardware", "Preparations"
+
+    HOW TO TELL A REAL SERIES FROM ACCESSORIES:
+    - A real DOOR series has its OWN base-price table keyed by door dimensions (width × height × gauge).
+    - A real FRAME series has its OWN base-price table keyed by frame dimensions (width × height × jamb depth).
+    - If a page only lists ADD-ON prices, up-charges, preps, or per-unit hardware costs — it is NOT a series.
+    - If a page is a continuation of options/accessories for another series, attach those pages to the parent series instead.
+
+    If a page only contains parts, accessories, or options for an existing series, do NOT create a new series for it — those details belong to the parent series.
+
+    NOTE: Do NOT spend time on summaries - set SUMMARY to empty string.
+    Summaries will be extracted in a dedicated step after categorization.
+
+    {additional_rules}
+
+    CRITICAL: Return ONLY valid, well-formed JSON. Every string must be properly quoted and closed.
+
+    [
+        {{
+            "SERIES": "Exact series name as shown in document",
+            "PAGES": [1, 2, 3],
+            "SUMMARY": ""
+        }}
+    ]
+
+# ============================================
+# Verification and Refinement
+# ============================================
+
+series_categorization:
+  description: "Categorize a single series as DOOR or FRAME using PDF content and assign raw material code"
+  prompt: |
+    You are an expert at categorizing door and frame products.
+
+    TASK: Analyze the following series and determine if it is a DOOR or FRAME series, and assign the most appropriate raw material code.
+
+    SERIES INFORMATION:
+    - Name: {series_name}
+    - Summary: {series_summary}
+    - Pages in PDF: {series_pages}
+
+    You have access to the ORIGINAL PDF document to verify the categorization.
+
+    CATEGORIZATION CRITERIA:
+    
+    DOOR Series - Products that are primarily doors:
+    - Door units, door slabs, door leaves
+    - Door configurations (single, double, vision lites)
+    - Door types (flush, panel, hollow metal)
+    - Entrance systems focused on the door component
+    - Products priced by door size/configuration
+    
+    FRAME Series - Products that are primarily frames:
+    - Frame profiles, frame assemblies
+    - Jambs, headers, sills
+    - Frame configurations (masonry, drywall, etc.)
+    - Rabbet depths, frame gauges
+    - Products priced by opening size/frame type
+    - Knock-down (KD) or welded frames
+    - Borrowed lite frames, sidelight frames, transom frames
+
+    AVAILABLE RAW MATERIAL CODES:
+    {raw_materials}
+
+    RAW MATERIAL ASSIGNMENT RULES:
+    - Pick the code that best matches the product's PRIMARY material and type (door vs frame)
+    - For hollow metal doors → HMD, hollow metal frames → HMF
+    - For wood doors → WDD, wood frames → WDF
+    - For stainless steel doors → SSD, stainless steel frames → SSF
+    - For sound-rated / STC doors → STD, sound-rated frames → STF
+    - For blast-resistant doors → BD, blast-resistant frames → BF
+    - If unsure, pick the closest match based on material and product type
+
+    ANALYSIS STEPS:
+    1. Review the series name - analyze the meaning of the name
+    2. Review the summary - understand what the product IS
+    3. Check the PDF pages listed - see the actual product specifications
+    4. Look at pricing structure - size-based vs model/function-based
+    5. If mixed (door+frame assembly), determine PRIMARY focus
+    6. Determine the primary material (hollow metal, wood, stainless steel, etc.)
+    7. Assign the matching raw material code
+
+    {additional_rules}
+
+    Return ONLY valid JSON in exactly this format (no markdown, no extra text):
+    {{"CATEGORY": "DOOR", "RAW_MATERIAL_CODE": "HMD", "CONFIDENCE": 0.95, "REASONING": "explanation here"}}
+    
+    or
+    
+    {{"CATEGORY": "FRAME", "RAW_MATERIAL_CODE": "HMF", "CONFIDENCE": 0.95, "REASONING": "explanation here"}}
+
+# ============================================
+# Summary Extraction Prompts (runs after categorization)
+# ============================================
+
+summary_extraction:
+  description: "Extract detailed summary for a DOOR or FRAME series (no hardware)"
+  prompt: |
+    You are an expert at analyzing door and frame product pricebooks.
+
+    TASK: Create an EXTREMELY DETAILED and COMPREHENSIVE summary for the "{series_name}" series.
+    This is a {category} series. The PDF contains ONLY the relevant pages for this series.
+
+    SERIES INFORMATION:
+    - Series Name: {series_name}
+    - Category: {category}
+    - Pages: {series_pages}
+
+    {additional_context}
+
+    CRITICAL: CAPTURE EVERY DETAIL - NO INFORMATION SHOULD BE LEFT OUT!
+    
+    SUMMARY REQUIREMENTS - Be EXHAUSTIVE and COMPREHENSIVE (1500-2000 characters):
+    Include EVERY piece of information found in the document, including ALL small details.
+
+    Include ALL of the following sections that apply:
+
+    1. PRODUCT IDENTITY & CONSTRUCTION:
+       - Exact product type and full name/designation
+       - Primary material(s) with specific grades or types (e.g., "16-gauge cold-rolled steel")
+       - Construction method (welded, bonded, composite, laminated, etc.)
+       - Core type and composition (honeycomb, polystyrene, mineral, etc.)
+       - Edge construction details (seamless, visible seam, welded corners)
+       - Manufacturing process notes
+
+    2. SPECIFICATIONS & RATINGS:
+       - ALL available gauges with specific thickness measurements
+       - Fire ratings (20-min, 45-min, 60-min, 90-min, 3-hr) with testing standards
+       - Sound ratings (STC ratings) if mentioned
+       - Wind load ratings or hurricane certifications
+       - Security ratings or levels
+       - Thermal performance (U-factor, R-value)
+       - Environmental certifications (LEED, FSC, etc.)
+
+    3. CONFIGURATIONS & SIZES:
+       - ALL available configurations (single, pair, double-egress, etc.)
+       - Complete size ranges: minimum and maximum widths (exact measurements)
+       - Complete height ranges: minimum and maximum heights (exact measurements)
+       - Standard vs custom size availability
+       - Thickness options with exact measurements
+       - Swing directions available
+       - Special size limitations or requirements
+       - For FRAMES: profile types, rabbet depths, jamb depths, throat dimensions
+
+    4. BASE PRICE STRUCTURE:
+       - Exact parameters that determine base price (size, gauge, type, etc.)
+       - Price table structure and organization
+       - How pricing varies by dimension ranges
+       - Standard vs premium pricing tiers
+       - Volume discount structures if mentioned
+       - Lead time impacts on pricing
+
+    5. STANDARD FEATURES (Included in base):
+       - Hardware preparations included (hinge count, locations, sizes)
+       - Lock/latch preparations (mortise, cylindrical, etc.)
+       - Reinforcement plates or channels included
+       - Edge seals or weatherstripping included
+       - Factory priming or finish included
+       - Label options included (fire, accessibility, etc.)
+       - Warranty details
+       - For FRAMES: anchor types included, silencers, dust cover strike
+
+    6. AVAILABLE OPTIONS & ADD-ONS:
+       - Vision lite options: ALL types (full, half, narrow), ALL sizes available
+       - Louver options: types, sizes, locations, grille patterns
+       - Glass types available (wire, tempered, laminated, etc.)
+       - Finish options: ALL colors, textures, coatings available
+       - Special preps: continuous hinge, power transfer, closer reinforcement, etc.
+       - Cutouts and custom modifications available
+       - Special seals (smoke, acoustic, light)
+       - For FRAMES: borrowed lite, sidelight, transom, spreader bars
+
+    7. PRICING IMPACTS & UPCHARGES:
+       - Specific upcharges for each option category ("+$X for...")
+       - Size-based pricing adjustments ("sizes over X add $Y")
+       - Gauge upgrades cost impact
+       - Fire rating pricing impacts
+       - Custom size premium percentages
+       - Rush order surcharges
+       - Freight/shipping considerations
+
+    8. DEPENDENCIES & RESTRICTIONS:
+       - Parameter interdependencies (e.g., "fire rating limits available gauges")
+       - Size limitations by gauge or rating
+       - Configuration restrictions (e.g., "pairs not available over X width")
+       - Material combinations that are not allowed
+       - Building code compliance requirements
+       - Maximum weight limitations
+
+    9. TECHNICAL NOTES:
+       - Installation requirements or recommendations
+       - Field modifications allowed/not allowed
+       - Warranty conditions or exclusions
+       - Testing/certification details
+
+    10. AVAILABILITY & LEAD TIMES:
+        - Standard lead time
+        - Quick ship options if available
+        - Custom order lead times
+        - Stock vs made-to-order items
+
+    FORMATTING REQUIREMENTS:
+    - Use clear paragraph breaks for different sections
+    - Be specific with measurements, codes, and model numbers
+    - Include actual values, not ranges (e.g., "3'-0\" to 10'-0\"" not "various sizes")
+    - Mention specific page numbers if referencing different price tables
+    - Use technical terminology correctly
+    - DO NOT omit details to save space - include EVERYTHING
+
+    The summary should enable someone to:
+    1. Understand EXACTLY what this product is
+    2. Know ALL available options and configurations
+    3. Understand complete pricing structure and impacts
+    4. Identify ALL dependencies and restrictions
+    5. Make informed ordering decisions without referring back to the PDF
+
+    Return ONLY valid JSON:
+    {{"summary": "Your extremely detailed and comprehensive summary here capturing every detail from the document..."}}
+
+series_refinement:
+  description: "Refine series extraction based on PDF verification feedback"
+  prompt: |
+    You previously extracted series information from a PDF. Now you have verification feedback from a secondary PDF analysis.
+
+    ORIGINAL EXTRACTION:
+    {original_extraction}
+
+    PDF VERIFICATION RESULTS:
+    {verification_results}
+
+    {additional_rules}
+
+    TASK: Refine the extraction based on the PDF verification feedback.
+
+    VERIFICATION APPROACH:
+    1. PDF Content is the single source of truth
+    2. Cross-check extracted series names against the actual PDF pages
+    3. Verify page numbers are accurate for each series
+
+    Rules:
+    1. If verification shows low confidence (<0.3), re-check the PDF to confirm accuracy
+    2. Keep series that are clearly visible in the PDF
+    3. Fix any series names that don't match what's actually in the PDF
+    4. Correct page numbers if they were incorrect
+    5. Apply any corrections suggested by the verification
+    6. Never remove series that clearly exist in the PDF
+    7. Do NOT categorize as DOOR or FRAME - categorization is done separately
+    8. Return only SERIES, PAGES, SUMMARY, and VERIFICATION fields
+
+    Return the refined extraction as a JSON array (no markdown formatting):
+    [
+        {{
+            "SERIES": "Corrected series name from PDF",
+            "PAGES": [corrected page numbers],
+            "SUMMARY": "Accurate summary based on PDF content",
+            "VERIFICATION": {{
+                "verified": true,
+                "confidence": 0.85,
+                "page_verified": true,
+                "corrections": null
+            }}
+        }}
+    ]
+
+
+# ============================================
+# Parameter Extraction Prompts
+# ============================================
+
+parameter_extraction:
+  description: "Extract configuration parameters from door/frame series base price table"
+  prompt: |
+    You are an expert in commercial door, frame, and hollow metal construction and manufacturing.
+    You deeply understand how pricebooks are structured — base price grids are organized by dimensions (Height × Width), grouped by configuration type (Single, Pair, etc.), jamb depth, gauge, profile, and other construction attributes. You know that each of these groupings represents a PRICE-AFFECTING selection.
+
+    TASK: Analyze the "{series_name}" series from the provided PDF (ONLY these pages are included) to extract ONLY the MINIMUM parameters required to look up a single cell in the BASE PRICE TABLE.
+
+    SERIES INFORMATION:
+    - Series Name: {series_name}
+    - Pages included in PDF: {series_pages}
+    - Summary: {series_summary}
+
+    {additional_context}
+
+    EXTRACTION RULES:
+
+    1. BASE PRICE TABLE IDENTIFICATION:
+       - Find the SPECIFIC base price table for "{series_name}"
+       - Tables are labeled with series name, model numbers, or part numbers
+       - Look for price grids with dimensions (Width x Height)
+       - Look for columns organized by jamb depth, gauge, or frame type
+       - IGNORE tables for other series that may be on these pages
+
+    2. EXTRACT EXACT VALUES FROM TABLE:
+       
+       CRITICAL: Extract ONLY the values that ACTUALLY appear in the table.
+       
+       - Width: Extract the EXACT width values shown in the table rows/columns
+       - Height: Extract the EXACT height values shown in the table rows/columns  
+       - Jamb Depth: Extract the EXACT jamb depths from column headers
+       - Gauge: Extract from table title or header (e.g., "16ga", "18ga")
+       - Type/Configuration: Extract from table (e.g., "Single", "Pair", "DE-FD-16-4")
+       - Profile: Frame profile types if applicable
+       - Rabbet: Rabbet depth options if applicable
+       
+       DO NOT:
+       - Assume standard values that aren't shown
+       - Mix values from different tables/series
+       - Add options that don't appear in THIS series' table
+       
+       INCLUDE — ONLY parameters that are axes or groupings of the base price table:
+       - Row headers of the price grid (e.g., Height)
+       - Column headers of the price grid (e.g., Width)
+       - Table grouping/splitting parameters (e.g., Configuration, Jamb Depth, Gauge) — these create separate sub-tables
+       - In short: the minimum set of selections needed to pinpoint ONE price cell in the base table
+       
+       EXCLUDE — everything else goes to optional parameters:
+       - Upcharges, adders, and surcharges (even if near the base table)
+       - Accessories, add-ons, and modifications
+       - Any parameter NOT required to locate a base price cell
+       
+       For parameters with >10 options: include first 5 representative values only.
+
+    3. PARAMETER HIERARCHY: 
+       - Break combined parameters into parent/child relationships when appropriate
+       - Set parent_parameter field for dependent parameters
+       - As a domain expert, note dependencies — e.g., certain jamb depths may only apply to specific configurations
+
+    4. FIELD USAGE:
+       - "description": Use domain-relevant descriptions when the parameter name alone is ambiguous to a non-expert (e.g., "Throat size of the frame profile" for Jamb Depth). Use null for self-explanatory names like Width, Height, Gauge.
+       - "notes": Capture pricing impacts, construction constraints, or dependencies (e.g., "+$50 upcharge", "only available with Single config", "determines base price tier"). Use null when there is no pricing note or constraint.
+       - "is_numeric": Set to TRUE for dimensional parameters where user can enter ANY numeric value:
+         * Width, Height, Thickness, Depth, Jamb Depth, Throat Dimension = TRUE (user can input custom sizes)
+         * Gauge, Frame Type, Profile, Configuration = FALSE (fixed options only)
+       - Keep responses concise to avoid truncation
+
+    JSON FORMATTING - CRITICAL:
+    - ALL strings in double quotes
+    - NO trailing commas
+    - Escape special chars: \" for quotes
+    - Return ONLY valid JSON array
+    - Complete all JSON structures properly
+
+    OUTPUT FORMAT:
+
+    [
+        {{
+            "parameter_name": "Gauge",
+            "description": null,
+            "parent_parameter": null,
+            "is_numeric": false,
+            "options": [
+                {{\"option_name\": \"18ga\", \"notes\": null}},
+                {{\"option_name\": \"16ga\", \"notes\": null}},
+                {{\"option_name\": \"14ga\", \"notes\": "+$50 upcharge"}}
+            ]
+        }},
+        {{
+            "parameter_name": "Width",
+            "description": null,
+            "parent_parameter": null,
+            "is_numeric": true,
+            "options": [
+                {{\"option_name\": \"3-0\", \"notes\": null}},
+                {{\"option_name\": \"4-0\", \"notes\": null}},
+                {{\"option_name\": \"6-0\", \"notes\": null}}
+            ]
+        }}
+    ]
+
+parameter_verification:
+  description: "Verify and analyze extracted parameters for completeness"
+  prompt: |
+    You are verifying parameter extraction for the "{series_name}" series.
+
+    SERIES PAGES: {series_pages}
+
+    EXTRACTED PARAMETERS:
+    {extracted_parameters}
+
+    TASK: Verify extracted parameters against the SPECIFIC base price table for "{series_name}".
+
+    CHECK FOR:
+    1. Missing key parameters from the base price table
+    2. INCORRECT OPTIONS: Width/Height/Jamb Depth values that don't match the table
+    3. Parameters that need parent/child hierarchy
+    4. Values from OTHER series' tables mixed in (should only have THIS series' values)
+
+    VERIFY DIMENSIONS:
+    - Check Width options against the actual table row headers
+    - Check Height options against the actual table row headers  
+    - Check Jamb Depth options against the actual table column headers
+    - Flag if generic values were used instead of actual table values
+
+    KEEP RESPONSE SHORT:
+    - Max 3 issues
+    - Brief descriptions (50 chars max)
+    - List only parameter names
+
+    Return JSON:
+    {{
+        "is_complete": true,
+        "issues_count": 0,
+        "issues": [{{"type": "missing_parameter", "description": "Brief"}}],
+        "missing_parameters": ["Param1"]
+    }}
+
+parameter_refinement:
+  description: "Refine parameters based on verification feedback"
+  prompt: |
+    You are refining parameter extraction for the "{series_name}" series based on feedback.
+
+    SERIES PAGES: {series_pages}
+
+    CURRENT PARAMETERS:
+    {current_parameters}
+
+    VERIFICATION FEEDBACK:
+    {feedback}
+
+    TASK: Refine the parameters based on the feedback:
+    - Add missing parameters from the base price table
+    - Fix hierarchy issues (parent/child relationships)
+    - CORRECT any dimension options (Width/Height/Jamb Depth) to match EXACT values in the table
+    - Remove options that don't exist in THIS series' table
+
+    CRITICAL: Extract ONLY values from the "{series_name}" base price table:
+    - Width: Use EXACT values from table rows (e.g., if table shows 6'0", 8'0", 9'10" - use ONLY those)
+    - Height: Use EXACT values from table rows
+    - Jamb Depth: Use EXACT values from table column headers
+    - DO NOT use generic/standard values that aren't in this specific table
+
+    MINIMIZE TOKEN USAGE - CRITICAL:
+    - "description": Use ONLY if parameter needs explanation, else null
+    - "notes": Use ONLY if option has special pricing/restriction, else null
+    - Most values should be null
+
+    JSON FORMATTING:
+    - Double quotes for strings
+    - NO trailing commas
+    - Return ONLY valid JSON
+
+    OUTPUT FORMAT:
+    
+    [
+        {{
+            "parameter_name": "Parameter Name",
+            "description": null,
+            "parent_parameter": null,
+            "is_numeric": false,
+            "options": [
+                {{"option_name": "Option 1", "notes": null}},
+                {{"option_name": "Option 2", "notes": "+$25 upcharge"}}
+            ]
+        }},
+        {{
+            "parameter_name": "Width",
+            "description": null,
+            "parent_parameter": null,
+            "is_numeric": true,
+            "options": [
+                {{"option_name": "6'0\"", "notes": null}},
+                {{"option_name": "8'0\"", "notes": null}}
+            ]
+        }}
+    ]
+
+parameter_extraction_concise:
+  description: "Extract parameters with strict limits when previous response was truncated"
+  prompt: |
+    You are an expert at analyzing door and frame product pricebooks to extract configuration parameters.
+
+    IMPORTANT: The previous extraction attempt was TRUNCATED due to response length limits.
+    You MUST provide a CONDENSED response that fits within output limits.
+
+    TASK: Extract ONLY the ESSENTIAL parameters for "{series_name}" series from the PDF.
+
+    SERIES INFORMATION:
+    - Series Name: {series_name}
+    - Pages: {series_pages}
+    - Summary: {series_summary}
+
+    STRICT CONDENSATION RULES:
+
+    1. LIMIT PARAMETERS: Extract maximum 8 most important parameters only:
+       Width, Height, Jamb Depth, Gauge, Frame Type/Configuration, 2-3 others
+
+    2. LIMIT OPTIONS PER PARAMETER:
+       - For dimensions: Show first 3 and last 2 values with "..." notation
+       - For other parameters: Maximum 5 options
+       - Example: ["3-0", "3-4", "3-6", "...", "8-0", "10-0"]
+
+    3. MINIMIZE TEXT:
+       - "description": ALWAYS null
+       - "notes": ALWAYS null (no notes!)
+       - Keep option_name values short
+
+    4. JSON MUST BE COMPLETE - No truncation!
+
+    OUTPUT FORMAT (STRICT):
+
+    [
+        {{
+            "parameter_name": "Gauge",
+            "description": null,
+            "parent_parameter": null,
+            "is_numeric": false,
+            "options": [
+                {{"option_name": "18ga", "notes": null}},
+                {{"option_name": "16ga", "notes": null}}
+            ]
+        }},
+        {{
+            "parameter_name": "Width",
+            "description": null,
+            "parent_parameter": null,
+            "is_numeric": true,
+            "options": [
+                {{"option_name": "3-0", "notes": null}},
+                {{"option_name": "4-0", "notes": null}},
+                {{"option_name": "...", "notes": null}},
+                {{"option_name": "8-0", "notes": null}}
+            ]
+        }}
+    ]
+
+    Return ONLY the JSON array. Ensure it is COMPLETE and valid.
+
+# ============================================
+# Optional Parameter Extraction Prompts
+# ============================================
+
+optional_parameter_extraction:
+  description: "Extract optional/add-on parameters from door/frame series pages"
+  prompt: |
+    You are an expert in commercial door, frame, and hollow metal construction and manufacturing.
+    You understand the full scope of optional add-ons, preps, accessories, and modifications available for hollow metal doors and frames — and you know which ones carry pricing in a pricebook. Your job is to capture EVERY option that has a price attached to it (directly or indirectly).
+
+    TASK: Analyze the "{series_name}" series from the provided PDF to extract ALL OPTIONAL parameters that have associated PRICING — accessories, add-ons, preps, modifications, upcharges, and upgrades that are NOT part of the base price but DO carry an additional cost.
+
+    SERIES INFORMATION:
+    - Series Name: {series_name}
+    - Pages included in PDF: {series_pages}
+    - Summary: {series_summary}
+    - Category: {category}
+
+    {additional_context}
+
+    ALREADY EXTRACTED BASE PARAMETERS (DO NOT INCLUDE THESE):
+    {base_parameter_names}
+    These parameters are already captured as base price table axes/groupings. Do NOT duplicate them in optional parameters.
+    However, if a base parameter has UPCHARGE options (e.g., "14ga add $50 over 18ga"), those upcharges SHOULD be captured here.
+
+    EXTRACTION RULES:
+
+    1. PRICE-DRIVEN EXTRACTION — CRITICAL PRINCIPLE:
+       - ONLY extract parameters/options that have pricing shown in the PDF ("+$X", "add $X", price column, price table)
+       - If an item appears in the PDF with NO associated price, SKIP it — it's informational only
+       - Every option you extract should have a price note or be part of a priced group
+
+    2. OPTIONAL ITEMS IDENTIFICATION:
+       Look for sections labeled:
+       - "Options", "Accessories", "Add-ons", "Upgrades"
+       - "Optional Features", "Adders", "Upcharges"
+       - Separate price lists for modifications
+       - Items with "add $X" or "+$X" pricing
+
+    3. WHAT TO EXTRACT (domain knowledge — common priced options):
+
+       For DOOR series:
+       - Vision lites/glass options and sizes (lite kits, glazing types)
+       - Louvers (types, sizes, locations — blade type affects price)
+       - Special coatings/finishes (galvanized, powder coat, custom colors)
+       - Security features (reinforcements, security mesh, bullet-resistant panels)
+       - Fire rating upgrades (when higher rating has an adder)
+       - Acoustic ratings/seals (STC-rated assemblies)
+       - Weatherstripping options (types: compression, magnetic, interlocking)
+       - Astragals for pairs (overlapping, flush, T-astragal)
+       - Cutouts and preparations (hinge prep, lock prep, closer prep)
+       - Label/certification options (when add-on pricing exists)
+       - Edge treatments (beveled, rounded, square)
+       - Door bottom types (sweep, automatic door bottom)
+
+       For FRAME series:
+       - Anchor types and quantities (masonry, T-strap, core board, adjustable)
+       - Silencers (rubber, lead-lined)
+       - Dust cover/strike box options
+       - Continuous hinge prep (full-length routing)
+       - Power transfer prep (electrified hardware accommodation)
+       - Closer reinforcement (14ga or 12ga plates)
+       - Surface-applied hardware prep (exit device, surface closer)
+       - Spreader bars (temporary or welded)
+       - Wrap-around frames / drywall frames
+       - Borrowed lite frames (vision panel in wall)
+       - Sidelight/transom options
+       - Jamb prep for specific hardware (electric strike, magnetic lock)
+       - Head/jamb stiffeners
+
+    4. EXTRACT EXACT VALUES WITH PRICING:
+       - Get EXACT option names as shown in the PDF
+       - ALWAYS include pricing in notes ("+$50", "add $12/prep", "$8.50 each")
+       - Note size/dimension constraints that affect pricing
+       - Capture compatibility and dependency requirements (e.g., "requires pair configuration", "not available with fire-rated", "only for 16ga or heavier")
+
+    5. PARAMETER STRUCTURE:
+       - Group related options under logical parameter names using domain knowledge
+       - Use parent_parameter for hierarchical options (e.g., "Lite Size" depends on "Vision Lite")
+       - Set is_numeric=true for dimensional options (lite sizes, cutout dimensions)
+
+    6. FIELD USAGE:
+       - "description": Use domain-relevant descriptions when the option name is industry jargon (e.g., "Steel channel welded to jamb for door alignment" for Spreader Bar). Use null for self-explanatory names.
+       - "notes": ALWAYS include pricing info. Also include dependencies, size restrictions, or compatibility notes when present in the PDF.
+       - "is_numeric": TRUE for size/dimension inputs, FALSE for fixed options
+
+    JSON FORMATTING - CRITICAL:
+    - ALL strings in double quotes
+    - NO trailing commas
+    - Escape special chars: \" for quotes
+    - Return ONLY valid JSON array
+    - Complete all JSON structures properly
+
+    OUTPUT FORMAT:
+
+    [
+        {{
+            "parameter_name": "Vision Lite",
+            "description": "Glass panel options",
+            "parent_parameter": null,
+            "is_numeric": false,
+            "options": [
+                {{"option_name": "No Lite", "notes": "Standard"}},
+                {{"option_name": "Half Lite", "notes": "+$125"}},
+                {{"option_name": "Full Lite", "notes": "+$200"}},
+                {{"option_name": "Narrow Lite", "notes": "+$95"}}
+            ]
+        }},
+        {{
+            "parameter_name": "Lite Size",
+            "description": null,
+            "parent_parameter": "Vision Lite",
+            "is_numeric": true,
+            "options": [
+                {{"option_name": "6x24", "notes": null}},
+                {{"option_name": "12x12", "notes": null}},
+                {{"option_name": "24x24", "notes": "+$15 over standard"}}
+            ]
+        }},
+        {{
+            "parameter_name": "Hinge Prep",
+            "description": "Hinge preparation type",
+            "parent_parameter": null,
+            "is_numeric": false,
+            "options": [
+                {{"option_name": "Standard (4.5\" x 4.5\")", "notes": "Included"}},
+                {{"option_name": "Heavy Weight (5\" x 5\")", "notes": "+$12/prep"}},
+                {{"option_name": "Continuous Hinge Prep", "notes": "+$45"}}
+            ]
+        }}
+    ]
+
+optional_parameter_verification:
+  description: "Verify extracted optional parameters for completeness"
+  prompt: |
+    You are verifying optional parameter extraction for the "{series_name}" series.
+
+    SERIES PAGES: {series_pages}
+    CATEGORY: {category}
+
+    EXTRACTED OPTIONAL PARAMETERS:
+    {extracted_parameters}
+
+    TASK: Verify extracted optional parameters against the PDF pages.
+
+    CHECK FOR:
+    1. Missing optional items (accessories, add-ons, upgrades)
+    2. Incorrect pricing information
+    3. Missing size/dimension options
+    4. Parameters that should have parent/child hierarchy
+    5. Compatibility notes that were missed
+
+    KEEP RESPONSE SHORT:
+    - Max 3 issues
+    - Brief descriptions (50 chars max)
+    - List only parameter names
+
+    Return JSON:
+    {{
+        "is_complete": true,
+        "issues_count": 0,
+        "issues": [{{"type": "missing_option", "description": "Brief"}}],
+        "missing_parameters": ["Param1"]
+    }}
+
+optional_parameter_refinement:
+  description: "Refine optional parameters based on verification feedback"
+  prompt: |
+    You are refining optional parameter extraction for the "{series_name}" series based on feedback.
+
+    SERIES PAGES: {series_pages}
+    CATEGORY: {category}
+
+    CURRENT OPTIONAL PARAMETERS:
+    {current_parameters}
+
+    VERIFICATION FEEDBACK:
+    {feedback}
+
+    TASK: Refine the optional parameters based on the feedback:
+    - Add missing optional parameters/accessories
+    - Correct pricing information
+    - Fix hierarchy issues (parent/child relationships)
+    - Add missing size/dimension options
+    - Include compatibility notes
+
+    MINIMIZE TOKEN USAGE:
+    - "description": Use ONLY if parameter needs explanation
+    - "notes": Include pricing and restrictions where available
+    - Keep option names concise
+
+    JSON FORMATTING:
+    - Double quotes for strings
+    - NO trailing commas
+    - Return ONLY valid JSON
+
+    OUTPUT FORMAT:
+    
+    [
+        {{
+            "parameter_name": "Parameter Name",
+            "description": null,
+            "parent_parameter": null,
+            "is_numeric": false,
+            "options": [
+                {{"option_name": "Option 1", "notes": "+$25"}},
+                {{"option_name": "Option 2", "notes": "+$50"}}
+            ]
+        }}
+    ]
+
+optional_parameter_extraction_concise:
+  description: "Extract optional parameters with strict limits when previous response was truncated"
+  prompt: |
+    You are an expert at analyzing door and frame product pricebooks to extract OPTIONAL parameters.
+
+    IMPORTANT: The previous extraction attempt was TRUNCATED due to response length limits.
+    You MUST provide a CONDENSED response that fits within output limits.
+
+    TASK: Extract the MOST IMPORTANT optional parameters for "{series_name}" series.
+
+    SERIES INFORMATION:
+    - Series Name: {series_name}
+    - Pages: {series_pages}
+    - Summary: {series_summary}
+    - Category: {category}
+
+    ALREADY EXTRACTED BASE PARAMETERS (EXCLUDE THESE): {base_parameter_names}
+
+    STRICT CONDENSATION RULES:
+
+    1. LIMIT PARAMETERS: Extract maximum 10 most common optional parameters:
+       For DOOR: Vision Lite, Louver, Fire Rating, Finish, Weatherstrip, Closer Prep
+       For FRAME: Anchor Type, Silencer, Strike Prep, Hinge Prep, Closer Reinf, Spreader Bar
+
+    2. LIMIT OPTIONS PER PARAMETER:
+       - Maximum 5 options per parameter
+       - Include most common options only
+
+    3. MINIMIZE TEXT:
+       - "description": ALWAYS null
+       - "notes": Only include if pricing info available
+       - Keep option_name values short
+
+    4. JSON MUST BE COMPLETE - No truncation!
+
+    OUTPUT FORMAT (STRICT):
+
+    [
+        {{
+            "parameter_name": "Vision Lite",
+            "description": null,
+            "parent_parameter": null,
+            "is_numeric": false,
+            "options": [
+                {{"option_name": "None", "notes": null}},
+                {{"option_name": "Half Lite", "notes": "+$125"}},
+                {{"option_name": "Full Lite", "notes": "+$200"}}
+            ]
+        }}
+    ]
+
+    Return ONLY the JSON array. Ensure it is COMPLETE and valid.
+
+# ============================================
+# Configuration Validation Agent Prompts
+# ============================================
+
+pricing_verification:
+  description: "AI verification of pricing calculations"
+  prompt: |
+    You are a pricing verification expert for door, frame, and hardware products.
+
+    TASK: Verify the pricing calculation for the following configuration.
+
+    SERIES: {series_name}
+
+    SPECIFICATIONS:
+    {specifications}
+
+    CALCULATED PRICING:
+    {pricing}
+
+    VERIFICATION STEPS:
+    1. Check if all specifications have been priced correctly
+    2. Verify the total matches the sum of individual items
+    3. Identify any missing charges or discounts
+    4. Flag any pricing anomalies
+
+    Return JSON:
+    {{
+        "has_issues": true/false,
+        "issues": ["list of issues found"],
+        "recommendations": ["list of recommendations"],
+        "confidence": 0.0-1.0
+    }}
+
+configuration_validation:
+  description: "Validate product configuration against available options"
+  prompt: |
+    You are validating a product configuration for the "{series_name}" series.
+
+    AVAILABLE PARAMETERS:
+    {available_parameters}
+
+    USER SPECIFICATIONS:
+    {specifications}
+
+    VALIDATION RULES:
+    1. Each specification must match an available parameter
+    2. Selected values must be valid options for that parameter
+    3. Required parameters must be specified
+    4. Numeric parameters can accept custom values within reasonable ranges
+
+    Check each specification and return:
+    {{
+        "is_valid": true/false,
+        "errors": ["list of validation errors"],
+        "warnings": ["list of warnings or suggestions"],
+        "matched_parameters": [
+            {{"spec": "user spec", "matched_to": "parameter name", "value": "selected value"}}
+        ]
+    }}
+
+pricing_calculation:
+  description: "Calculate pricing for validated configuration"
+  prompt: |
+    You are calculating pricing for a "{series_name}" configuration.
+
+    CONFIGURATION:
+    {configuration}
+
+    PRICING DATA:
+    {pricing_data}
+
+    CALCULATION RULES:
+    1. Start with base price if available
+    2. Apply dimensional pricing (width x height lookup)
+    3. Add upcharges for premium options
+    4. Apply discounts if applicable
+    5. Sum all optional add-ons
+
+    Return detailed pricing breakdown:
+    {{
+        "base_price": 0.00,
+        "dimensional_price": 0.00,
+        "upcharges": [
+            {{"item": "description", "amount": 0.00}}
+        ],
+        "discounts": [
+            {{"item": "description", "amount": -0.00}}
+        ],
+        "optional_items": [
+            {{"item": "description", "amount": 0.00}}
+        ],
+        "total_price": 0.00,
+        "calculation_notes": ["notes about the calculation"]
+    }}
+
+# ============================================
+# Price Extraction Agent Prompts
+# ============================================
+
+price_extraction:
+  description: "Extract all pricing data from series pages — base price grid and optional add-on prices"
+  prompt: |
+    You are an expert at analyzing door, frame, and hardware product pricebooks to extract ALL pricing information.
+
+    TASK: Analyze the "{series_name}" series from the provided PDF to extract a COMPLETE, STRUCTURED pricing dataset.
+    You will receive BOTH the base parameters and optional parameters already extracted for this series.
+    Your job is to find and attach the correct prices to each.
+
+    SERIES INFORMATION:
+    - Series Name: {series_name}
+    - Pages included in PDF: {series_pages}
+    - Summary: {series_summary}
+    - Category: {category}
+
+    {additional_context}
+
+    ALREADY EXTRACTED BASE PARAMETERS:
+    {base_parameters}
+
+    ALREADY EXTRACTED OPTIONAL PARAMETERS:
+    {optional_parameters}
+
+    EXTRACTION RULES:
+
+    1. BASE PRICE TABLE — USE GRID FORMAT:
+       - Find the base price table/grid for "{series_name}" in the PDF
+       - The PDF table is typically a 2D grid (e.g., Height rows × Width columns), possibly grouped by Configuration, Jamb Depth, etc.
+       - Mirror the PDF layout: output ONE grid object per distinct sub-table (e.g., per Configuration+JambDepth combo)
+       - Each grid has "group" (the fixed parameter values), "row_param" / "col_param" (the two grid dimensions), "columns" (column header values), and "rows" (each row with its prices array aligned to columns)
+       - Use the EXACT parameter names from the base parameters list above
+       - If the table is very large, the grid format handles it efficiently — extract ALL rows and columns
+       - If multiple tables exist (e.g., per configuration or per gauge), output a separate grid for EACH
+
+    2. BASE PARAMETER UPCHARGES:
+       - Some base parameter options have upcharges (e.g., 14ga costs $50 more than 18ga)
+       - Extract these as separate entries in the "base_parameter_upcharges" section
+       - Only include options that have a NON-ZERO price delta
+
+    3. OPTIONAL PARAMETER PRICES:
+       - For each optional parameter, find the add-on price from the PDF
+       - Prices typically appear as "+$X", "add $X", or in a separate price column
+       - If pricing is per-unit (per frame, per leaf, per prep), note the unit
+       - Match each price to the correct option from the optional parameters list above
+
+    4. ACCURACY:
+       - Use EXACT dollar values from the PDF — do NOT estimate or interpolate
+       - If a price is unclear or unreadable, set price to null and add a note
+       - Cross-reference prices against the series summary for sanity checking
+
+    JSON FORMATTING - CRITICAL:
+    - ALL strings in double quotes
+    - NO trailing commas
+    - Escape special chars: \" for quotes
+    - Return ONLY valid JSON object
+    - Complete all JSON structures properly
+
+    OUTPUT FORMAT:
+
+    {{
+        "series_name": "{series_name}",
+        "base_price_table": [
+            {{
+                "group": "Configuration:Single | Jamb Depth:4-3/4",
+                "row_param": "Height",
+                "col_param": "Width",
+                "columns": ["2-0", "2-4", "2-6", "2-8", "3-0"],
+                "rows": [
+                    {{"value": "6-8", "prices": [118.00, 122.00, 128.00, 134.00, 140.00]}},
+                    {{"value": "7-0", "prices": [125.00, 129.00, 135.00, 141.00, 147.00]}}
+                ],
+                "notes": null
+            }},
+            {{
+                "group": "Configuration:Pair | Jamb Depth:5-3/4",
+                "row_param": "Height",
+                "col_param": "Width",
+                "columns": ["4-0", "5-0", "6-0"],
+                "rows": [
+                    {{"value": "7-0", "prices": [380.00, 410.00, 445.00]}},
+                    {{"value": "8-0", "prices": [420.00, 455.00, 490.00]}}
+                ],
+                "notes": null
+            }}
+        ],
+        "base_parameter_upcharges": [
+            {{
+                "parameter_name": "Gauge",
+                "option_name": "14ga",
+                "price": 50.00,
+                "notes": "upcharge over standard 18ga"
+            }}
+        ],
+        "optional_parameter_prices": [
+            {{
+                "parameter_name": "Vision Lite",
+                "option_name": "Half Lite",
+                "price": 125.00,
+                "unit": null,
+                "notes": null
+            }},
+            {{
+                "parameter_name": "Silencer",
+                "option_name": "Rubber Silencer",
+                "price": 2.50,
+                "unit": "per frame",
+                "notes": null
+            }}
+        ]
+    }}
+
+price_verification:
+  description: "Verify extracted pricing data for completeness and accuracy"
+  prompt: |
+    You are verifying price extraction for the "{series_name}" series.
+
+    SERIES PAGES: {series_pages}
+    CATEGORY: {category}
+    SERIES SUMMARY: {series_summary}
+
+    EXTRACTED PRICING DATA:
+    {extracted_prices}
+
+    ALREADY EXTRACTED BASE PARAMETERS:
+    {base_parameters}
+
+    ALREADY EXTRACTED OPTIONAL PARAMETERS:
+    {optional_parameters}
+
+    TASK: Verify extracted pricing against the ACTUAL PDF pages for "{series_name}".
+
+    CHECK FOR:
+    1. BASE PRICE GRID COMPLETENESS: The base_price_table uses a GRID format — each grid object has "group" (fixed params), "row_param", "col_param", "columns", and "rows" with aligned price arrays. Check: Are all sub-tables from the PDF represented as grids? Are all rows and columns from the PDF captured in each grid?
+    2. PRICE ACCURACY: Spot-check at least 5 price values against the PDF. Flag any that don't match.
+    3. MISSING UPCHARGES: Are there base parameter options with price impacts that weren't captured?
+    4. OPTIONAL PRICE COVERAGE: For each optional parameter, is there at least one priced option? Flag optional parameters that have visible prices in the PDF but are missing from the extraction.
+    5. UNIT CONSISTENCY: Are per-unit prices correctly noted (per frame, per leaf, per pair, each)?
+    6. PARAMETER NAME MATCHING: Do the parameter names in the price data match the actual parameter names from the base/optional parameters lists?
+
+    KEEP RESPONSE SHORT:
+    - Max 5 issues
+    - Brief descriptions
+
+    Return JSON:
+    {{
+        "overall_confidence": 0.85,
+        "needs_improvement": false,
+        "issues": [
+            {{"type": "missing_prices | wrong_price | missing_upcharge | missing_optional_price | name_mismatch", "description": "Brief description", "affected": "parameter or combination"}}
+        ],
+        "missing_price_entries": ["description of what's missing"],
+        "feedback": "Brief summary of issues",
+        "thought_process": "Brief reasoning about extraction quality"
+    }}
+
+price_refinement:
+  description: "Refine price extraction based on verification feedback"
+  prompt: |
+    You are refining price extraction for the "{series_name}" series based on feedback.
+
+    SERIES PAGES: {series_pages}
+    CATEGORY: {category}
+
+    CURRENT PRICING DATA:
+    {current_prices}
+
+    ALREADY EXTRACTED BASE PARAMETERS:
+    {base_parameters}
+
+    ALREADY EXTRACTED OPTIONAL PARAMETERS:
+    {optional_parameters}
+
+    VERIFICATION FEEDBACK:
+    {feedback}
+
+    TASK: Refine the pricing data based on the feedback:
+    - Add any missing base price grid rows/columns or sub-tables
+    - Correct any inaccurate price values
+    - Add missing base parameter upcharges
+    - Add missing optional parameter prices
+    - Fix parameter name mismatches
+    - Ensure unit consistency
+
+    CRITICAL: Extract EXACT dollar values from the PDF. Do NOT estimate.
+
+    Return the COMPLETE corrected pricing data in GRID format:
+
+    {{
+        "series_name": "{series_name}",
+        "base_price_table": [
+            {{
+                "group": "Param1:Val1 | Param2:Val2",
+                "row_param": "Height",
+                "col_param": "Width",
+                "columns": ["2-0", "2-4"],
+                "rows": [
+                    {{"value": "6-8", "prices": [118.00, 122.00]}}
+                ],
+                "notes": null
+            }}
+        ],
+        "base_parameter_upcharges": [
+            {{"parameter_name": "Name", "option_name": "Option", "price": 0.00, "notes": null}}
+        ],
+        "optional_parameter_prices": [
+            {{"parameter_name": "Name", "option_name": "Option", "price": 0.00, "unit": null, "notes": null}}
+        ]
+    }}
+
+price_extraction_concise:
+  description: "Extract prices with strict limits when previous response was truncated"
+  prompt: |
+    IMPORTANT: The previous price extraction was TRUNCATED due to response length limits.
+    You MUST provide a CONDENSED response that fits within output limits.
+
+    TASK: Extract ALL pricing data for "{series_name}" series using the compact GRID format.
+
+    SERIES INFORMATION:
+    - Series Name: {series_name}
+    - Pages: {series_pages}
+    - Summary: {series_summary}
+    - Category: {category}
+
+    BASE PARAMETERS:
+    {base_parameters}
+
+    OPTIONAL PARAMETERS:
+    {optional_parameters}
+
+    USE GRID FORMAT — this is much more compact than flat entries:
+    - One grid object per sub-table (e.g., per Configuration+JambDepth combo)
+    - "columns" = column header values, "rows" = row entries with aligned price arrays
+    - This naturally captures the same 2D grid layout as the PDF
+
+    CONDENSATION RULES (only if grid is still too large):
+    1. Cover ALL sub-tables (configurations/jamb depths) — do NOT skip any
+    2. Include ALL rows and columns from each sub-table
+    3. Maximum 5 most significant upcharges
+    4. Maximum 15 most common optional parameter prices
+    5. JSON MUST BE COMPLETE — No truncation!
+
+    Return the pricing data in GRID format:
+    {{
+        "series_name": "{series_name}",
+        "base_price_table": [
+            {{
+                "group": "Configuration:Single | Jamb Depth:4-3/4",
+                "row_param": "Height",
+                "col_param": "Width",
+                "columns": ["2-0", "2-4", "2-6"],
+                "rows": [
+                    {{"value": "6-8", "prices": [118.00, 122.00, 128.00]}}
+                ],
+                "notes": null
+            }}
+        ],
+        "base_parameter_upcharges": [...],
+        "optional_parameter_prices": [...]
+    }}
+
+    Return ONLY the JSON object. Ensure it is COMPLETE and valid.
+
+# ============================================
+# LLM Configuration Validation (Multi-Agent)
+# ============================================
+
+configuration_llm_validation:
+  description: "LLM-based validation of product configuration against series data, parameters, and optional parameters"
+  prompt: |
+    You are an expert product configuration validator for door, frame, and hardware pricebooks.
+
+    TASK: Validate the user's specification against ALL available data for this series.
+    If valid, provide a complete price breakdown. If invalid, explain exactly why.
+
+    SERIES INFORMATION:
+    - Series Name: {series_name}
+    - Manufacturer: {manufacturer}
+    - Brand: {brand}
+    - Category: {category}
+    - Series Summary: {series_summary}
+
+    BASE (REQUIRED) PARAMETERS:
+    {base_parameters}
+
+    OPTIONAL PARAMETERS:
+    {optional_parameters}
+
+    PRICING DATA:
+    {prices}
+
+    USER SPECIFICATIONS:
+    {specifications}
+
+    {feedback_context}
+
+    VALIDATION RULES:
+    1. Every user specification MUST match an available parameter (base or optional). Use fuzzy matching for names — e.g., "Gauge" should match "gauge", "Material Gauge", etc.
+    2. For option-based parameters, the selected value MUST appear in that parameter's options list (case-insensitive matching allowed).
+    3. For numeric parameters, the value should be within a reasonable range based on the series summary and parameter context.
+    4. ALL base (required) parameters MUST be specified by the user. If any are missing, list them in missing_required_parameters.
+    5. Optional parameters are NOT required — only validate them if the user EXPLICITLY provided them. Do NOT infer, assume, or apply optional parameters the user did not specify.
+    6. Use the series summary to check for any compatibility constraints, size limitations, or special rules that apply.
+    7. When matching specifications, consider abbreviations and common naming variations (e.g., "18ga" = "18 Gauge").
+    8. HEIGHT and WIDTH CEILING RULE: For any parameter that represents a height or width (e.g., "Height", "Width", "Door Height", "Door Width", "Frame Width", etc.), if the user's value does NOT exactly match an available option, select the NEAREST CEILING option — i.e., the smallest available option that is >= the user's value. For example, if the user specifies Height = 6'10" and the available options are 6'8", 7'0", 7'2", match to 7'0". Parse dimension strings (e.g., "3'6\"", "3-6", "42\"", "42 inches") into a comparable numeric value before comparing. If the user's value exceeds ALL available options, flag it as invalid. Always note in the matched_option that a ceiling match was applied (e.g., "7'0\" (ceiling match from 6'10\")").
+
+    PRICING RULES (only if configuration is valid):
+    1. BASE PRICE LOOKUP: Use the "base_price_table" array from PRICING DATA. Each entry has an "option_name" encoding a parameter combination (e.g., "Configuration:Single | Jamb Depth:4-3/4 | Height:6-8 | Width:2-0") and a "price" field. Match the user's selected parameters to find the correct price entry. Use ceiling-matched values for height/width when looking up.
+    2. UPCHARGES: Check the "base_parameter_upcharges" array from PRICING DATA. Add upcharges ONLY for base parameters the user explicitly selected that have an upcharge entry.
+    3. OPTIONAL ADD-ON PRICES: Add optional prices ONLY for optional parameters the user EXPLICITLY specified. If the user did NOT mention an optional parameter, do NOT include it in pricing — even if it seems related or implied by another selection. For each user-specified optional parameter, find its price in the "optional_parameter_prices" array. Note per-unit pricing (e.g., "per frame").
+    4. TOTAL = base price (from base_price_table) + applicable base parameter upcharges + user-specified optional add-on prices.
+    5. If the base_price_table is empty or has no matching entry for the user's combination, fall back to the series summary to find the price. Flag this in pricing_notes.
+    6. If an option has no pricing data, set price_impact to 0 and flag it.
+    7. Report the full price breakdown per parameter — ONLY for parameters the user actually specified.
+    8. CRITICAL: Do NOT add pricing for parameters the user did not provide. If the user only specified 3 parameters, the price_breakdown should have at most 3 entries (plus any upcharges on those same parameters).
+
+    Return ONLY valid JSON in this exact format:
+    {{
+        "is_valid": true,
+        "confidence": 0.95,
+        "reasoning": "Brief explanation of validation logic and any assumptions made",
+        "matched_specifications": [
+            {{
+                "user_spec": "user's parameter name",
+                "matched_parameter": "exact parameter name from data",
+                "matched_option": "exact option name matched",
+                "is_optional": false,
+                "price_impact": 0.00,
+                "price_source": "from option notes / not available",
+                "notes": "any relevant notes from the option"
+            }}
+        ],
+        "missing_required_parameters": [
+            {{
+                "parameter": "parameter name",
+                "available_options": ["option1", "option2"]
+            }}
+        ],
+        "invalid_specifications": [
+            {{
+                "user_spec": "what user provided",
+                "user_value": "value provided",
+                "reason": "why it's invalid",
+                "suggestions": ["valid alternative 1", "valid alternative 2"]
+            }}
+        ],
+        "pricing": {{
+            "base_price": 0.00,
+            "optional_price": 0.00,
+            "total_price": 0.00,
+            "price_breakdown": [
+                {{"parameter": "name", "selection": "value", "price_impact": 0.00, "is_optional": false}}
+            ],
+            "pricing_notes": ["any notes about pricing gaps or assumptions"]
+        }},
+        "warnings": ["any non-blocking warnings or suggestions"]
+    }}
+
+    If invalid, set "is_valid" to false and populate the error fields. Pricing can be omitted or zeroed when invalid.
+
+configuration_validation_feedback:
+  description: "Feedback agent that reviews and verifies the validation report for correctness"
+  prompt: |
+    You are a quality assurance reviewer for product configuration validation reports.
+
+    TASK: Review the validation report produced by the validation agent. Check its correctness
+    against the raw series data and user specifications. Identify any mistakes, missed issues,
+    or incorrect conclusions.
+
+    SERIES INFORMATION:
+    - Series Name: {series_name}
+    - Manufacturer: {manufacturer}
+    - Brand: {brand}
+    - Category: {category}
+    - Series Summary: {series_summary}
+
+    BASE (REQUIRED) PARAMETERS:
+    {base_parameters}
+
+    OPTIONAL PARAMETERS:
+    {optional_parameters}
+
+    PRICING DATA:
+    {prices}
+
+    USER SPECIFICATIONS:
+    {specifications}
+
+    VALIDATION REPORT TO REVIEW:
+    {validation_report}
+
+    REVIEW CHECKLIST:
+    1. PARAMETER MATCHING: Did the validator correctly match each user spec to the right parameter? Are there false matches or missed matches?
+    2. OPTION VALIDATION: For each matched parameter, is the selected option actually in the options list? Were case/abbreviation matches handled correctly?
+    3. HEIGHT/WIDTH CEILING MATCHING: For height and width parameters, if the user's value did not exactly match an option, did the validator pick the nearest ceiling option (smallest option >= user value)? Verify the ceiling calculation is correct.
+    4. MISSING REQUIRED: Are all truly required (base) parameters accounted for? Did the validator miss any, or falsely flag optional ones as missing?
+    5. BASE PRICE FROM PRICING DATA: The base price should come from the "base_price_table" array in PRICING DATA. Each entry has an "option_name" encoding a parameter combination and a "price" field. Verify the validator matched the correct combination using the ceiling-matched height/width values. If base_price_table is empty, verify the validator used the series summary as fallback and flagged it.
+    6. UPCHARGES: Check the "base_parameter_upcharges" array in PRICING DATA for applicable upcharges. Verify these were correctly added to the total. Upcharges should ONLY apply to base parameters the user selected.
+    7. OPTIONAL PRICING: Check the "optional_parameter_prices" array in PRICING DATA. Verify the validator ONLY priced optional parameters that the user EXPLICITLY specified. If the price_breakdown includes an optional parameter the user did NOT provide, flag it as an error — the validator should not infer or assume optional selections.
+    8. MATH ACCURACY: Verify total_price = base_price (from base_price_table) + upcharges + sum of user-specified optional add-ons. Ensure the price used corresponds to the ceiling-matched option, not the user's original value.
+    9. SUMMARY CONSTRAINTS: Did the validator consider constraints from the series summary (size limits, compatibility rules, special conditions)?
+    10. NO PHANTOM PRICING: Verify the price_breakdown contains ONLY parameters the user actually specified. If the validator added pricing for parameters not in the user's specifications, flag this as a critical error.
+    11. OVERALL CORRECTNESS: Is the is_valid conclusion correct given the evidence?
+
+    Return ONLY valid JSON:
+    {{
+        "is_correct": true,
+        "confidence": 0.95,
+        "issues_found": [
+            {{
+                "issue_type": "wrong_match | missed_parameter | wrong_price | wrong_validity | missed_constraint",
+                "description": "detailed description of the issue",
+                "affected_field": "which part of the validation report is wrong",
+                "suggested_correction": "what the correct answer should be"
+            }}
+        ],
+        "feedback_summary": "Concise summary of all issues found, or confirmation that the report is correct",
+        "should_revalidate": false
+    }}
+
+    Set "should_revalidate" to true ONLY if there are meaningful errors that would change the outcome.
+    Minor formatting or non-impactful issues should NOT trigger revalidation.
+
+# ============================================
+# HARDWARE-SPECIFIC PROMPTS
+# ============================================
+
+hardware_series_extraction:
+  description: "Extract series from hardware product pricebooks (hinges, locks, closers, exit devices, etc.)"
+  prompt: |
+    You are an expert AI agent specialized in analyzing HARDWARE product catalogues and pricebooks.
+    Hardware includes: hinges, locks, locksets, door closers, exit devices, panic hardware, thresholds, weatherstripping, kick plates, push/pull bars, astragals, coordinators, and similar door/frame hardware.
+
+    TASK: Analyze the provided PDF document and extract ALL hardware product series/lines.
+
+    IMPORTANT RULES:
+    1. Scan the ENTIRE document - series information may be scattered across non-contiguous pages
+    2. Each distinct hardware product line or model family should be its own series
+    3. Group related models under the same series (e.g., all variants of a continuous hinge line)
+    4. Do NOT lump unrelated hardware types into one series
+    5. Focus on extracting SERIES and PAGES ONLY - summaries will be extracted separately
+    6. If a series spans multiple pages, capture ALL page numbers
+    7. Ensure ALL JSON strings are properly closed with quotes
+
+    EXCLUDE THE FOLLOWING — these are NOT series:
+    - Parts pages (replacement parts, spare parts, components lists)
+    - Accessories pages that are not a distinct product line
+    - Optional add-ons, upgrades, or optional features sections
+    - Price adders, surcharges, or adjustment tables
+    - Finish/color option pages that are not tied to a specific product line
+    - General terms, conditions, warranty, or index pages
+    - Freight, shipping, or packaging information
+    If a page only contains parts, accessories, or options for an existing series, do NOT create a new series for it — those details belong to the parent series.
+
+    NOTE: Do NOT spend time on summaries - set SUMMARY to empty string.
+
+    {additional_rules}
+
+    CRITICAL: Return ONLY valid, well-formed JSON. Every string must be properly quoted and closed.
+
+    [
+        {{
+            "SERIES": "Exact series/product line name as shown in document",
+            "PAGES": [1, 2, 3],
+            "SUMMARY": ""
+        }}
+    ]
+
+hardware_series_categorization:
+  description: "Categorize a hardware series into sub-categories"
+  prompt: |
+    You are an expert at categorizing hardware products into specific sub-categories.
+
+    TASK: Analyze the following hardware series and assign it a specific hardware sub-category.
+
+    SERIES INFORMATION:
+    - Name: {series_name}
+    - Summary: {series_summary}
+    - Pages in PDF: {series_pages}
+
+    You have access to the ORIGINAL PDF document to verify the categorization.
+
+    HARDWARE SUB-CATEGORIES:
+
+    HINGES - Products that are hinges:
+    - Continuous hinges (geared, pin & barrel)
+    - Butt hinges (full mortise, half mortise, half surface, full surface)
+    - Pivot hinges (offset, center, intermediate)
+    - Spring hinges (single-acting, double-acting)
+    - Specialty hinges (hospital tip, security, raised barrel)
+
+    LOCKS - Products that are locks or locksets:
+    - Mortise locks and locksets
+    - Cylindrical locks and locksets
+    - Deadbolts and deadlatches
+    - Electronic/smart locks
+    - Multipoint locks
+    - Padlocks and cabinet locks
+
+    CLOSERS - Products that are door closers:
+    - Surface closers (regular arm, parallel arm, top jamb)
+    - Concealed closers (overhead, floor)
+    - Spring closers
+    - Electromagnetic hold-open closers
+
+    EXIT_DEVICES - Panic and exit hardware:
+    - Rim exit devices
+    - Mortise exit devices
+    - Surface vertical rod
+    - Concealed vertical rod
+    - Alarmed exit devices
+
+    THRESHOLDS - Threshold and seal products:
+    - Saddle thresholds
+    - Thermal break thresholds
+    - ADA compliant thresholds
+    - Weatherstripping and door bottoms
+
+    ACCESSORIES - Other door hardware accessories:
+    - Kick plates, push plates, pull bars
+    - Door stops and holders
+    - Flush bolts and dust proof strikes
+    - Astragals and coordinators
+    - Protection plates
+    - Viewers and knockers
+
+    ANALYSIS STEPS:
+    1. Review the series name for hardware type indicators
+    2. Review the summary for product details
+    3. Check the PDF pages for actual product specifications
+    4. Look at pricing structure and model numbers
+    5. Determine the most specific sub-category
+    6. Assign the appropriate raw material code from the list below
+
+    AVAILABLE RAW MATERIAL CODES:
+    {raw_materials}
+
+    RAW MATERIAL ASSIGNMENT RULES:
+    - For all hardware series, the default raw material code is HWD (Hardware)
+    - If the series is clearly about a specific material type (e.g., stainless steel hardware), still use HWD
+
+    {additional_rules}
+
+    Return ONLY valid JSON in exactly this format (no markdown, no extra text):
+    {{"CATEGORY": "HARDWARE", "SUB_CATEGORY": "HINGES", "RAW_MATERIAL_CODE": "HWD", "CONFIDENCE": 0.95, "REASONING": "explanation here"}}
+
+hardware_series_categorization_verification:
+  description: "Verify hardware categorization result"
+  prompt: |
+    You are verifying the categorization of a hardware series.
+
+    SERIES: {series_name}
+    PAGES: {series_pages}
+    ASSIGNED CATEGORY: {assigned_category}
+    ASSIGNED SUB_CATEGORY: {assigned_sub_category}
+    CONFIDENCE: {confidence}
+
+    TASK: Verify this categorization by checking the actual PDF content.
+
+    CHECK:
+    1. Does the PDF content match the assigned sub-category?
+    2. Is the confidence justified?
+    3. Would a different sub-category be more accurate?
+
+    Return JSON:
+    {{
+        "is_correct": true,
+        "confidence": 0.95,
+        "suggested_category": "HARDWARE",
+        "suggested_sub_category": "HINGES",
+        "feedback": "Brief feedback if incorrect"
+    }}
+
+hardware_summary_extraction:
+  description: "Extract detailed summary for a hardware series"
+  prompt: |
+    You are an expert at analyzing hardware product pricebooks.
+
+    TASK: Create an EXTREMELY DETAILED and COMPREHENSIVE summary for the "{series_name}" hardware series.
+    This is a {category} / {sub_category} series. The PDF contains ONLY the relevant pages.
+
+    SERIES INFORMATION:
+    - Series Name: {series_name}
+    - Category: {category}
+    - Sub-Category: {sub_category}
+    - Pages: {series_pages}
+
+    {additional_context}
+
+    CRITICAL: CAPTURE EVERY DETAIL - NO INFORMATION SHOULD BE LEFT OUT!
+
+    SUMMARY REQUIREMENTS (1500-2000 characters):
+
+    1. PRODUCT IDENTITY:
+       - Exact hardware type and full name/designation
+       - Mechanism type and operation (spring-loaded, hydraulic, mechanical, electric)
+       - Full model/part number structure and naming convention
+       - Product line or family name
+
+    2. MATERIALS & FINISHES:
+       - ALL material options (steel, stainless, brass, bronze, aluminum)
+       - Material grades (e.g., "304 stainless", "commercial bronze")
+       - ALL finish options: ANSI/BHMA codes and color names
+       - Special coatings (PVD, powder coat, plated)
+
+    3. RATINGS & CERTIFICATIONS:
+       - Fire rating with test standards
+       - BHMA grade (Grade 1, 2, 3) with cycle testing
+       - ADA/accessibility compliance
+       - Security ratings, environmental exposure ratings
+       - Testing standards met (ANSI A156.X, UL, etc.)
+
+    4. CAPACITY & SIZING:
+       - Door weight capacity: min and max
+       - Door width capacity: min and max
+       - Door thickness compatibility
+       - Spring sizes, arm lengths, backsets
+
+    5. FUNCTIONS & CONFIGURATIONS:
+       - ALL available functions (passage, privacy, storeroom, classroom, etc.)
+       - Hand/handing requirements and reversibility
+       - Operating modes, trim styles, cylinder types
+       - Electric options (fail-safe, fail-secure, monitoring)
+
+    6. BASE PRICE STRUCTURE:
+       - What determines base price (model, function, finish)
+       - Price variations by finish, function, or grade
+       - Quantity pricing breakpoints
+
+    7. OPTIONS & ACCESSORIES:
+       - Cylinder options, trim options, electrical accessories
+       - Mounting hardware, cover plates, dogging options
+       - Delayed egress, card reader integration
+
+    8. PRICING DETAILS:
+       - Upcharges for premium finishes
+       - Electric option pricing, cylinder pricing, trim pricing
+
+    9. TECHNICAL REQUIREMENTS:
+       - Installation clearances, power requirements, wiring
+       - Field modifications allowed/prohibited
+
+    10. AVAILABILITY:
+        - Lead times, stock vs special order
+        - Minimum order quantities
+
+    Return ONLY valid JSON:
+    {{"summary": "Your extremely detailed summary here..."}}
+
+hardware_summary_verification:
+  description: "Verify hardware summary extraction"
+  prompt: |
+    You are verifying the summary extraction for a hardware series.
+
+    SERIES: {series_name}
+    PAGES: {series_pages}
+    SUB-CATEGORY: {sub_category}
+
+    EXTRACTED SUMMARY:
+    {extracted_summary}
+
+    TASK: Verify the summary against the PDF content.
+
+    CHECK:
+    1. Are all product details captured?
+    2. Are model numbers and specifications correct?
+    3. Are finish options and pricing details complete?
+    4. Any missing critical hardware information?
+
+    IMPORTANT: Keep your response SHORT and CONCISE. Do NOT repeat the summary content. Only return the JSON object below — nothing else.
+
+    Return ONLY this JSON (no extra text):
+    {{
+        "is_complete": true,
+        "confidence": 0.9,
+        "issues_count": 0,
+        "issues": ["issue1"],
+        "feedback": "One sentence max"
+    }}
+
+hardware_parameter_extraction:
+  description: "Extract configuration parameters from hardware series base price table"
+  prompt: |
+    You are an expert in commercial door hardware — closers, locksets, exit devices, hinges, pivots, electromagnetic holders, and access control. You understand how hardware pricebooks are structured: price tables organized by model/part number, function, finish, and size, where each selection axis directly determines the price.
+
+    TASK: Analyze the "{series_name}" hardware series to extract ONLY the MINIMUM parameters required to look up a single cell in the BASE PRICE TABLE.
+
+    SERIES INFORMATION:
+    - Series Name: {series_name}
+    - Pages included in PDF: {series_pages}
+    - Summary: {series_summary}
+
+    {additional_context}
+
+    EXTRACTION RULES:
+
+    1. BASE PRICE TABLE IDENTIFICATION:
+       - Find the SPECIFIC base price table for "{series_name}"
+       - For HARDWARE: Look for price tables organized by model, function, finish, or size
+       - IGNORE tables for other series
+
+    2. EXTRACT EXACT VALUES:
+       - Model/Part Number: Extract available model numbers
+       - Function: Lock functions (passage, privacy, classroom, storeroom, etc.), closer types (regular arm, parallel arm, top jamb), hinge types (full mortise, half mortise, swing clear)
+       - Finish: Available finishes (US26D, 630, 652, US3, etc.) — different finishes often have different prices
+       - Size/Capacity: Door weight ratings, hinge sizes (4.5"x4.5", 5"x5"), closer sizes (1-6)
+       - Hand/Handing: LH, RH, LHR, RHR if applicable and priced differently
+       - Grade: BHMA grade if applicable and affects pricing
+
+       DO NOT:
+       - Assume standard values that aren't shown
+       - Mix values from different tables
+       - Add options not in THIS series' table
+
+       INCLUDE — ONLY parameters that are axes or groupings of the base price table:
+       - Row headers of the price table (e.g., Model/Part Number)
+       - Column headers of the price table (e.g., Finish)
+       - Table grouping/splitting parameters (e.g., Function, Size) — these create separate sub-tables
+       - In short: the minimum set of selections needed to pinpoint ONE price cell in the base table
+
+       EXCLUDE — everything else goes to optional parameters:
+       - Upcharges, adders, and surcharges (even if near the base table)
+       - Accessories, add-ons, and modifications
+       - Any parameter NOT required to locate a base price cell
+
+       For parameters with >10 options: include first 5 representative values only.
+
+    3. PARAMETER HIERARCHY:
+       - Break combined parameters into parent/child where appropriate
+       - As a domain expert, note dependencies (e.g., certain functions only available on specific models, certain finishes only on specific trim styles)
+
+    4. FIELD USAGE:
+       - "description": Use domain-relevant descriptions when hardware jargon needs clarification (e.g., "BHMA Grade 1 heavy-duty commercial" for Grade). Use null for self-explanatory names like Finish, Model.
+       - "notes": Capture pricing impacts, dependencies, or construction constraints (e.g., "+$15 over standard", "only with 4040XP model", "determines price tier"). Use null when there is no pricing note or constraint.
+       - "is_numeric": TRUE only for dimensional/size parameters where user enters custom value
+       - Keep responses concise
+
+    JSON FORMATTING - CRITICAL:
+    - ALL strings in double quotes
+    - NO trailing commas
+    - Return ONLY valid JSON array
+
+    OUTPUT FORMAT:
+
+    [
+        {{
+            "parameter_name": "Model",
+            "description": null,
+            "parent_parameter": null,
+            "is_numeric": false,
+            "options": [
+                {{"option_name": "4040XP", "notes": null}},
+                {{"option_name": "4041", "notes": null}}
+            ]
+        }},
+        {{
+            "parameter_name": "Function",
+            "description": null,
+            "parent_parameter": null,
+            "is_numeric": false,
+            "options": [
+                {{"option_name": "Regular Arm", "notes": null}},
+                {{"option_name": "Parallel Arm", "notes": "+$15"}}
+            ]
+        }}
+    ]
+
+hardware_parameter_verification:
+  description: "Verify extracted hardware parameters"
+  prompt: |
+    You are verifying parameter extraction for the "{series_name}" hardware series.
+
+    SERIES PAGES: {series_pages}
+
+    EXTRACTED PARAMETERS:
+    {extracted_parameters}
+
+    TASK: Verify extracted parameters against the base price table for "{series_name}".
+
+    CHECK FOR:
+    1. Missing key parameters (model, function, finish, size)
+    2. Incorrect options that don't match the table
+    3. Parameters needing parent/child hierarchy
+    4. Values from other series mixed in
+
+    KEEP RESPONSE SHORT:
+    - Max 3 issues
+    - Brief descriptions (50 chars max)
+
+    Return JSON:
+    {{
+        "is_complete": true,
+        "issues_count": 0,
+        "issues": [{{"type": "missing_parameter", "description": "Brief"}}],
+        "missing_parameters": ["Param1"]
+    }}
+
+hardware_parameter_refinement:
+  description: "Refine hardware parameters based on verification feedback"
+  prompt: |
+    You are refining parameter extraction for the "{series_name}" hardware series based on feedback.
+
+    SERIES PAGES: {series_pages}
+
+    CURRENT PARAMETERS:
+    {current_parameters}
+
+    VERIFICATION FEEDBACK:
+    {feedback}
+
+    TASK: Refine parameters based on feedback:
+    - Add missing parameters from the base price table
+    - Fix hierarchy issues
+    - Correct options to match EXACT values in the table
+    - Remove options from other series
+
+    MINIMIZE TOKEN USAGE:
+    - "description": null unless explanation needed
+    - "notes": null unless pricing/restriction info
+    - Most values should be null
+
+    Return ONLY valid JSON array of parameters.
+
+hardware_optional_parameter_extraction:
+  description: "Extract optional/add-on parameters from hardware series"
+  prompt: |
+    You are an expert in commercial door hardware — closers, locksets, exit devices, hinges, pivots, electromagnetic holders, and access control. You understand the full range of optional accessories, upgrades, and modifications available for each hardware category, and you know which ones carry pricing in a pricebook. Your job is to capture EVERY option that has a price attached to it.
+
+    TASK: Extract ALL OPTIONAL parameters, accessories, and add-ons for "{series_name}" that have associated PRICING and are NOT part of the base price.
+
+    SERIES INFORMATION:
+    - Series Name: {series_name}
+    - Pages: {series_pages}
+    - Summary: {series_summary}
+    - Category: {category}
+
+    {additional_context}
+
+    ALREADY EXTRACTED BASE PARAMETERS (DO NOT INCLUDE THESE):
+    {base_parameter_names}
+    These parameters are already captured as base price table axes/groupings. Do NOT duplicate them in optional parameters.
+    However, if a base parameter has UPCHARGE options (e.g., premium finish add $25), those upcharges SHOULD be captured here.
+
+    EXTRACTION RULES:
+
+    1. PRICE-DRIVEN EXTRACTION — CRITICAL PRINCIPLE:
+       - ONLY extract parameters/options that have pricing shown in the PDF ("+$X", "add $X", price column, price table)
+       - If an item appears in the PDF with NO associated price, SKIP it
+       - Every option you extract should have a price note or be part of a priced group
+
+    2. OPTIONAL ITEMS IDENTIFICATION:
+       Look for: "Options", "Accessories", "Add-ons", "Upgrades", "Adders", "+$X" pricing
+
+    3. WHAT TO EXTRACT FOR HARDWARE (domain knowledge — common priced add-ons):
+       - Cylinder options and keying (SFIC, FSIC, Schlage, Corbin Russwin, Medeco — keyway type affects price)
+       - Trim styles and upgrades (lever designs: Augusta, Omega, Rhodes — premium trim costs more)
+       - Finish upgrades (premium PVD finishes, antimicrobial coatings, custom colors)
+       - Electrical options (EL, ELR, LX, fail-safe, fail-secure, request-to-exit)
+       - Mounting kits and brackets (soffit plates, drop brackets, parallel arm shoes)
+       - Cover plates and filler plates
+       - Dogging options (hex key, cylinder dogging, mechanical dogging)
+       - Delayed egress modules (code-compliant delayed exit)
+       - Card reader integration and access control prep
+       - Extended warranties
+       - Special backsets or functions (2-3/4" vs 2-3/8" backset adder)
+       - Door position indicators / switches
+       - Signal switches and monitoring (door ajar alarm, forced entry)
+       - Rain/weather covers (for surface-mounted closers)
+       - Through-bolt kits
+       - Hold-open arms / spring stop options
+
+    4. EXTRACT EXACT VALUES WITH PRICING:
+       - Get EXACT option names from PDF
+       - ALWAYS include pricing in notes ("+$25", "add $50/unit")
+       - Capture compatibility and dependency requirements (e.g., "requires Model 4040XP", "not available in US3 finish", "only for 1-3/4\" doors")
+
+    5. PARAMETER STRUCTURE:
+       - Group related options logically using domain knowledge
+       - Use parent_parameter for hierarchical options (e.g., "Keyway" depends on "Cylinder Type")
+       - is_numeric=true for dimensional options
+
+    6. FIELD USAGE:
+       - "description": Use domain-relevant descriptions when hardware jargon needs clarification. Use null for self-explanatory names.
+       - "notes": ALWAYS include pricing info. Also include dependencies, compatibility constraints, and construction requirements when present in the PDF.
+       - "is_numeric": TRUE for dimensional options, FALSE for fixed options
+
+    JSON FORMATTING:
+    - ALL strings in double quotes
+    - NO trailing commas
+    - Return ONLY valid JSON array
+
+    OUTPUT FORMAT:
+    [
+        {{
+            "parameter_name": "Cylinder Type",
+            "description": null,
+            "parent_parameter": null,
+            "is_numeric": false,
+            "options": [
+                {{"option_name": "Standard Cylinder", "notes": "Included"}},
+                {{"option_name": "SFIC", "notes": "+$25"}},
+                {{"option_name": "Schlage C Keyway", "notes": "+$15"}}
+            ]
+        }}
+    ]
+
+hardware_optional_parameter_verification:
+  description: "Verify extracted hardware optional parameters"
+  prompt: |
+    You are verifying optional parameter extraction for the "{series_name}" hardware series.
+
+    SERIES PAGES: {series_pages}
+    CATEGORY: {category}
+
+    EXTRACTED OPTIONAL PARAMETERS:
+    {extracted_parameters}
+
+    TASK: Verify extracted optional parameters against the PDF.
+
+    CHECK FOR:
+    1. Missing optional items (cylinders, trim, electrical, accessories)
+    2. Incorrect pricing information
+    3. Missing compatibility notes
+    4. Parameters needing parent/child hierarchy
+
+    KEEP RESPONSE SHORT:
+    - Max 3 issues
+    - Brief descriptions (50 chars max)
+
+    Return JSON:
+    {{
+        "is_complete": true,
+        "issues_count": 0,
+        "issues": [{{"type": "missing_option", "description": "Brief"}}],
+        "missing_parameters": ["Param1"]
+    }}
+
+hardware_optional_parameter_refinement:
+  description: "Refine hardware optional parameters based on feedback"
+  prompt: |
+    You are refining optional parameter extraction for the "{series_name}" hardware series.
+
+    SERIES PAGES: {series_pages}
+    CATEGORY: {category}
+
+    CURRENT OPTIONAL PARAMETERS:
+    {current_parameters}
+
+    VERIFICATION FEEDBACK:
+    {feedback}
+
+    TASK: Refine optional parameters based on feedback:
+    - Add missing accessories and add-ons
+    - Correct pricing information
+    - Fix hierarchy issues
+    - Add compatibility notes
+
+    MINIMIZE TOKEN USAGE:
+    - "description": null unless explanation needed
+    - "notes": include pricing and restrictions where available
+
+    Return ONLY valid JSON array.
+
+hardware_optional_parameter_extraction_concise:
+  description: "Concise hardware optional parameter extraction for truncated responses"
+  prompt: |
+    IMPORTANT: Previous extraction was TRUNCATED. Provide CONDENSED response.
+
+    TASK: Extract the MOST IMPORTANT optional parameters for "{series_name}" hardware.
+
+    SERIES INFO:
+    - Series Name: {series_name}
+    - Pages: {series_pages}
+    - Summary: {series_summary}
+    - Category: {category}
+
+    ALREADY EXTRACTED BASE PARAMETERS (EXCLUDE THESE): {base_parameter_names}
+
+    STRICT RULES:
+    1. Maximum 10 parameters: Cylinder, Trim, Keying, Electrical, Finish Upgrade, Dogging, Mounting Kit, Cover Plate, etc.
+    2. Maximum 5 options per parameter
+    3. "description": ALWAYS null
+    4. "notes": Only if pricing available
+    5. JSON MUST BE COMPLETE
+
+    Return ONLY valid JSON array.
+
+hardware_parameter_extraction_concise:
+  description: "Concise hardware parameter extraction for truncated responses"
+  prompt: |
+    IMPORTANT: Previous extraction was TRUNCATED. Provide CONDENSED response.
+
+    TASK: Extract ESSENTIAL parameters for "{series_name}" hardware.
+
+    SERIES INFO:
+    - Series Name: {series_name}
+    - Pages: {series_pages}
+    - Summary: {series_summary}
+
+    STRICT RULES:
+    1. Maximum 8 parameters: Model, Function, Finish, Size, Hand, Grade, 2-3 others
+    2. Maximum 5 options per parameter
+    3. "description": ALWAYS null
+    4. "notes": ALWAYS null
+    5. JSON MUST BE COMPLETE
+
+    Return ONLY valid JSON array.
+
+# ============================================
+# FEEDBACK LOOP VERIFICATION PROMPTS (shared)
+# ============================================
+
+series_extraction_verification:
+  description: "Verify series extraction results with feedback for improvement"
+  prompt: |
+    You are verifying extracted series data against the PDF document.
+
+    EXTRACTED SERIES:
+    {extracted_series}
+
+    TOC/INDEX REFERENCE:
+    {toc_reference}
+
+    TASK: Verify each series for accuracy.
+
+    CHECK:
+    1. Series name accuracy
+    2. Page numbers correctness
+    3. Has actual content (not just TOC mentions)
+    4. Completeness - any series missed?
+
+    Return JSON:
+    {{
+        "overall_confidence": 0.85,
+        "needs_improvement": false,
+        "feedback": "Brief feedback for improvement",
+        "issues": ["list of specific issues"]
+    }}
+
+summary_extraction_verification:
+  description: "Verify summary extraction with feedback"
+  prompt: |
+    You are verifying the summary extraction for "{series_name}".
+
+    SERIES: {series_name}
+    CATEGORY: {category}
+    PAGES: {series_pages}
+
+    EXTRACTED SUMMARY:
+    {extracted_summary}
+
+    TASK: Verify summary completeness and accuracy.
+
+    CHECK:
+    1. All product details captured?
+    2. Specifications and ratings correct?
+    3. Pricing structure described?
+    4. Options and configurations listed?
+    5. Any critical information missing?
+
+    IMPORTANT: Keep your response SHORT and CONCISE. Do NOT repeat the summary content. Only return the JSON object below — nothing else.
+
+    Return ONLY this JSON (no extra text):
+    {{
+        "is_complete": true,
+        "confidence": 0.9,
+        "issues_count": 0,
+        "issues": ["issue1"],
+        "feedback": "One sentence max"
+    }}
+
+categorization_verification:
+  description: "Verify categorization result with feedback"
+  prompt: |
+    You are verifying the categorization of "{series_name}".
+
+    SERIES: {series_name}
+    PAGES: {series_pages}
+    ASSIGNED CATEGORY: {assigned_category}
+    CONFIDENCE: {confidence}
+    REASONING: {reasoning}
+
+    TASK: Verify this categorization against the PDF.
+
+    Return JSON:
+    {{
+        "is_correct": true,
+        "confidence": 0.95,
+        "suggested_category": "DOOR",
+        "feedback": "Brief feedback"
+    }}
